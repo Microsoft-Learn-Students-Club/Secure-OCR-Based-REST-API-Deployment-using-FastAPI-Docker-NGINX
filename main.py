@@ -14,6 +14,7 @@ load_dotenv()
 
 # Setting up Tesseract
 # pytesseract.pytesseract.tesseract_cmd = os.getenv('Tesseract')
+pytesseract.pytesseract.tesseract_cmd = '/usr/bin/tesseract'
 
 api_keys = os.getenv('API_KEYS') 
 # print(api_keys)
