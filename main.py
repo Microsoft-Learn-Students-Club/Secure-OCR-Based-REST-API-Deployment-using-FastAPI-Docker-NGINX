@@ -13,7 +13,7 @@ app = FastAPI()
 load_dotenv()
 
 # Setting up Tesseract
-pytesseract.pytesseract.tesseract_cmd = os.getenv('Tesseract')
+# pytesseract.pytesseract.tesseract_cmd = os.getenv('Tesseract')
 
 api_keys = os.getenv('API_KEYS') 
 # print(api_keys)
