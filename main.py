@@ -53,6 +53,7 @@ def extract_codes_from_text(text):
 def extract_codes_from_image(page):
     pix = page.get_pixmap()  
     img = Image.frombytes("RGB", [pix.width, pix.height], pix.samples)
+    img.thumbnail((1000, 1000))
     text = pytesseract.image_to_string(img)  
     return text
 
