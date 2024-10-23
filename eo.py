@@ -1,10 +1,10 @@
-import easyocr
 import re
 import fitz
 from fastapi.responses import JSONResponse
 import os
 from dotenv import load_dotenv
 from PIL import Image
+import pytesseract
 from fastapi import FastAPI, UploadFile, File, HTTPException, Header
 import uvicorn
 from fastapi.security.api_key import APIKeyHeader
@@ -12,8 +12,9 @@ from fastapi.security.api_key import APIKeyHeader
 app = FastAPI()
 load_dotenv()
 
-reader = easyocr.Reader(['en'])
-
+# Setting up Tesseract
+# pytesseract.pytesseract.tesseract_cmd = os.getenv('Tesseract')
+pytesseract.pytesseract.tesseract_cmd = '/usr/bin/tesseract'
 
 api_keys = os.getenv('API_KEYS') 
 # print(api_keys)
@@ -53,10 +54,7 @@ def extract_codes_from_image(page):
     pix = page.get_pixmap()  
     img = Image.frombytes("RGB", [pix.width, pix.height], pix.samples)
     img.thumbnail((1000, 1000))
-    img.save("temp_image.png")
-    result = reader.readtext("temp_image.png", detail=0)
-    text = " ".join(result) 
-    os.remove("temp_image.png") 
+    text = pytesseract.image_to_string(img)  
     return text
 
 
