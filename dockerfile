@@ -1,5 +1,5 @@
 # Use the official Python image as a base
-FROM python:3.9-slim-buster
+FROM python:3.10-slim-buster
 
 # Install system dependencies including Tesseract
 RUN apt-get update && \
