@@ -1,10 +1,10 @@
 # Use the official Python image as a base
-FROM python:3.12.2
+FROM python:3.9-slim-buster
 
 # Install system dependencies including Tesseract
-RUN apt-get update && apt-get install -y tesseract-ocr \
-    && apt-get clean \
-    && rm -rf /var/lib/apt/lists/*
+RUN apt-get update && \
+apt-get -qq -y install tesseract-ocr && \
+apt-get -qq -y install libtesseract-dev
 
 # Set the working directory in the container
 WORKDIR /app
@@ -20,5 +20,5 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY . .
 
 # Command to run your application
-CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["uvicorn", "tesse:app", "--host", "0.0.0.0", "--port", "8000"]
 
