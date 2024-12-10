@@ -1,49 +1,66 @@
-import easyocr
 import re
 import fitz
 from fastapi.responses import JSONResponse
 import os
+import requests
 from dotenv import load_dotenv
 from PIL import Image
-from fastapi import FastAPI, UploadFile, File, HTTPException, Header
+import pytesseract
+import requests
+from fastapi import FastAPI, UploadFile, File, Request, Depends, HTTPException
 import uvicorn
-from fastapi.security.api_key import APIKeyHeader
+from fastapi.middleware.cors import CORSMiddleware
+import cv2
+import numpy as np
+from PIL import Image
 
 app = FastAPI()
 load_dotenv()
 
-reader = easyocr.Reader(['en'])
+# middleware setup
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
-
-api_keys = os.getenv('API_KEYS') 
-# print(api_keys)
-api_key_header = APIKeyHeader(name='X_api_key')
-if api_keys:
-    valid_api_keys = api_keys.split(",")
-else:
-    valid_api_keys = []
-
-# Function to validate the API key
-def get_api_key(api_key: str):
-    if api_key not in valid_api_keys:
-        print(api_key)
-        raise HTTPException(
-            status_code=403,
-            detail="Could not validate API key",
-        )
-
+# Setting up Tesseract
+pytesseract.pytesseract.tesseract_cmd = '/usr/bin/tesseract'
+# pytesseract.pytesseract.tesseract_cmd = os.getenv('Tesseract')
 
 # Define a function to extract text from a single page of the PDF
 def extract_text_from_page(page):
     # Extract text from a specific page
     return page.get_text("text")
 
+def get_api_key(request: Request):
+    api_key = request.headers.get('X-API-Key') or request.query_params.get('api_key')
+    # print(f"Received API key: {api_key}")
+    correct_api_keys = os.getenv("API_KEY").split(',')
+    # print(correct_api_keys)
+    if api_key not in correct_api_keys:
+        raise HTTPException(status_code=403, detail="Forbidden: Invalid API Key")
+    return api_key
+
+def preprocess_image_for_ocr(image):
+    # Step 1: Increase Image Resolution (upscale)
+    image = image.resize((int(image.width * 1.5), int(image.height * 1.5)), Image.Resampling.LANCZOS)
+
+    # Convert to a format compatible with OpenCV for further processing
+    open_cv_image = np.array(image)
+    open_cv_image = cv2.cvtColor(open_cv_image, cv2.COLOR_RGB2BGR)
+
+    processed_image = Image.fromarray(open_cv_image)
+    return processed_image
+
 
 # Define a function to extract codes based on the fixed pattern
 def extract_codes_from_text(text):
     # Regex pattern for codes like AC1-21-02-15-3, AC1-21-02-15-12, etc.
-    pattern = r'[A-Z]{2}\d-\d{2}-\d{2}-\d{1,2}-\d{1,2}'
-    # pattern = r'\*\s*\|\|\|\s*([A-Z]{2}\d-\d{2}-\d{2}-\d{1,2}-\d{1,2})\s*\|\|\|\s*\*'
+    # pattern = r'[A-Z]{2}\d-\d{2}-\d{2}-\d{1,2}-\d{1,2}'
+    pattern = r'[A-Z]{2,5}\d{1,9}-\d{1,5}-\d{1,5}-\d{1,5}-\d{1,3}'
     codes = re.findall(pattern, text)
     return codes
 
@@ -52,11 +69,9 @@ def extract_codes_from_text(text):
 def extract_codes_from_image(page):
     pix = page.get_pixmap()  
     img = Image.frombytes("RGB", [pix.width, pix.height], pix.samples)
-    img.thumbnail((1000, 1000))
-    img.save("temp_image.png")
-    result = reader.readtext("temp_image.png", detail=0)
-    text = " ".join(result) 
-    os.remove("temp_image.png") 
+    preprocessed_img = preprocess_image_for_ocr(img)
+    text = pytesseract.image_to_string(preprocessed_img)
+    # print(text)  
     return text
 
 
@@ -69,13 +84,17 @@ def check_pdf (doc):
     return True
 
 # API route 
-@app.post('/extract')
-async def extract(file : UploadFile = File(...), api_key: str=Header(..., alias="X_api_key")):
-    get_api_key(api_key)
+@app.post('/ocr')
+async def extract(url: str = None, api_key: str = Depends(get_api_key)):
     temp_pdf = 'temp.pdf'
-    with open(temp_pdf, "wb") as f:
-        content =  await file.read()
-        f.write(content)
+    try:
+        response = requests.get(url, stream=True)
+        response.raise_for_status()  # Check for HTTP request errors
+        with open(temp_pdf, "wb") as f:
+            f.write(response.content)  # Write the downloaded content to a file
+    except Exception as e:
+        return JSONResponse(content={"error": f"Failed to download PDF from URL. Error: {str(e)}"})
+
 
     # Open the PDF document
     doc = fitz.open(temp_pdf)
@@ -91,17 +110,13 @@ async def extract(file : UploadFile = File(...), api_key: str=Header(..., alias=
         page = doc.load_page(page_num)
 
         if contains_image:
-            # print('image')
             text = extract_codes_from_image(page)
-            # print(text)
         else:    
         # Extract text from the current page
-            # print('text')
             text = extract_text_from_page(page)
         # Extract codes from the current page's text
         codes = extract_codes_from_text(text)
         code = codes[0] if codes else None
-        # print (code)
         # Print the result for each page
         if code:
             parts = code.split('-')
@@ -141,4 +156,5 @@ async def extract(file : UploadFile = File(...), api_key: str=Header(..., alias=
         return {'message' : 'NO CODES FOUND'}
 
 if __name__=='__main__' :
-    uvicorn.run(app, host = '127.0.0.1', port = 8000)
+    uvicorn.run(app, host = '127.0.0.1', port = 80)
+    
